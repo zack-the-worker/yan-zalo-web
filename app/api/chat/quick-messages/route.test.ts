@@ -82,4 +82,21 @@ describe("POST /api/chat/quick-messages", () => {
     expect(body.item.keyword).toBe("hi");
     expect(mockApi.addQuickMessage).toHaveBeenCalledWith({ keyword: "hi", title: "Xin chào!" });
   });
+
+  it("returns 500 with error code when ZaloApiError is thrown", async () => {
+    vi.mocked(isLoggedIn).mockReturnValue(true);
+    const err = Object.assign(new Error("Item size not support"), { code: 821 });
+    const mockApi = { addQuickMessage: vi.fn().mockRejectedValue(err) };
+    vi.mocked(getZaloApi).mockReturnValue(mockApi as never);
+    const req = new Request("http://localhost/api/chat/quick-messages", {
+      method: "POST",
+      body: JSON.stringify({ keyword: "tambiet", title: "tạm biệt" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const res = await POST(req as never);
+    expect(res.status).toBe(500);
+    const body = await res.json();
+    expect(body.error).toBe("Item size not support");
+    expect(body.code).toBe(821);
+  });
 });

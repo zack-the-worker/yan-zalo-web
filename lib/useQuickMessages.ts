@@ -7,11 +7,13 @@ interface UseQuickMessagesResult {
   loading: boolean;
   addTemplate: (keyword: string, title: string) => Promise<void>;
   refresh: () => Promise<void>;
+  addError: string | null;
 }
 
 export function useQuickMessages(): UseQuickMessagesResult {
   const [templates, setTemplates] = useState<QuickMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -32,15 +34,22 @@ export function useQuickMessages(): UseQuickMessagesResult {
 
   const addTemplate = useCallback(
     async (keyword: string, title: string) => {
-      await fetch("/api/chat/quick-messages", {
+      setAddError(null);
+      const res = await fetch("/api/chat/quick-messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ keyword, title }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg = data.error ?? "Lỗi không xác định";
+        setAddError(msg);
+        throw new Error(msg);
+      }
       await refresh();
     },
     [refresh]
   );
 
-  return { templates, loading, addTemplate, refresh };
+  return { templates, loading, addTemplate, refresh, addError };
 }
