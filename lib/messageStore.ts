@@ -1,7 +1,13 @@
 // Shared types for chat messages used in both server and client
 export type ThreadType = "User" | "Group";
 
-export type MediaType = "sticker" | "image" | "video";
+export type MediaType = "sticker" | "image" | "video" | "file" | "poll";
+
+export interface MessageReaction {
+  icon: string; // Zalo shortcode e.g. "/-heart"
+  senderIds: string[];
+  senderNames: string[];
+}
 
 export interface ChatMessage {
   id: string; // msgId or cliMsgId
@@ -14,6 +20,9 @@ export interface ChatMessage {
   isSelf: boolean;
   mediaType?: MediaType;
   mediaUrl?: string; // resolved URL for sticker/image/video
+  cliMsgId?: string; // client-side message ID (needed for addReaction)
+  pollId?: number; // poll ID for poll messages
+  reactions?: MessageReaction[];
 }
 
 export interface Conversation {
@@ -98,4 +107,27 @@ export function markRead(threadId: string): void {
   const store = getStore();
   const conv = store.conversations.get(threadId);
   if (conv) conv.unread = 0;
+}
+
+export function updateMessageReaction(
+  threadId: string,
+  msgId: string,
+  icon: string,
+  senderId: string,
+  senderName: string
+): void {
+  const msgs = getStore().messages.get(threadId);
+  if (!msgs) return;
+  const msg = msgs.find((m) => m.id === msgId);
+  if (!msg) return;
+  if (!msg.reactions) msg.reactions = [];
+  const existing = msg.reactions.find((r) => r.icon === icon);
+  if (existing) {
+    if (!existing.senderIds.includes(senderId)) {
+      existing.senderIds.push(senderId);
+      existing.senderNames.push(senderName);
+    }
+  } else {
+    msg.reactions.push({ icon, senderIds: [senderId], senderNames: [senderName] });
+  }
 }

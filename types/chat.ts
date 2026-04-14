@@ -9,7 +9,7 @@ export interface StickerDetail {
 
 export type Tab = "direct" | "group";
 
-export type PickerTab = "emoji" | "sticker";
+export type PickerTab = "emoji" | "sticker" | "poll";
 
 export type QuickMessage = {
   id: number;
@@ -36,3 +36,27 @@ export type QuickMessage = {
     }[];
   } | null;
 };
+
+export interface PollOption {
+  id: string;
+  name: string;
+  votes: number;
+}
+
+export interface PollDetail {
+  pollId: number;
+  question: string;
+  options: PollOption[];
+  creator: string;
+  expiredTime: number;
+  isLocked: boolean;
+}
+
+export interface CreatePollRequest {
+  question: string;
+  options: string[];
+  groupId: string;
+  expiredTime?: number;
+  allowMultiChoices?: boolean;
+  isAnonymous?: boolean;
+}
