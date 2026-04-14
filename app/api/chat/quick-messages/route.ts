@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ item: result.item });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Lỗi không xác định";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const code = (err as { code?: number }).code ?? null;
+    return NextResponse.json({ error: message, code }, { status: 500 });
   }
 }
