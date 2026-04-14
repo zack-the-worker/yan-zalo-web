@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Search, Clock, ClipboardList, Users, UserSearch, Users2 } from "lucide-react";
+import { Search, Clock, ClipboardList, Users, UserSearch, Users2, Link2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 interface Tool {
@@ -49,6 +49,12 @@ const TOOLS: Tool[] = [
     icon: Users2,
     label: "Nhóm chung",
     desc: "Xem bạn có nhóm nào chung với người khác",
+  },
+  {
+    href: "/tien-ich/parse-link",
+    icon: Link2,
+    label: "Preview link",
+    desc: "Xem trước nội dung link trước khi gửi",
   },
 ];
 
