@@ -66,4 +66,29 @@ describe("useQuickMessages", () => {
     expect(postCall).toBeDefined();
     expect(JSON.parse(postCall![1]!.body as string)).toEqual({ keyword: "ty", title: "Cảm ơn!" });
   });
+
+  it("addTemplate throws and sets addError when POST fails", async () => {
+    vi.mocked(fetch)
+      // initial load
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ items: [] }) } as Response)
+      // POST fails
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({ error: "Bạn đã đạt giới hạn số lượng tin nhắn mẫu", code: 821 }),
+      } as Response);
+
+    const { result } = renderHook(() => useQuickMessages());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let caughtError: Error | undefined;
+    await act(async () => {
+      try {
+        await result.current.addTemplate("tambiet", "tạm biệt");
+      } catch (err) {
+        caughtError = err as Error;
+      }
+    });
+    expect(caughtError?.message).toMatch("Bạn đã đạt giới hạn");
+    expect(result.current.addError).toBe("Bạn đã đạt giới hạn số lượng tin nhắn mẫu");
+  });
 });

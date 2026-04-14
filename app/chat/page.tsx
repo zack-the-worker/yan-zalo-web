@@ -53,6 +53,7 @@ export default function ChatPage() {
   const [newKeyword, setNewKeyword] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [addingTemplate, setAddingTemplate] = useState(false);
+  const [addTemplateError, setAddTemplateError] = useState<string | null>(null);
   const { templates, loading: templatesLoading, addTemplate } = useQuickMessages();
 
   // Auth guard
@@ -273,11 +274,17 @@ export default function ChatPage() {
   const handleAddTemplate = async () => {
     if (!newKeyword.trim() || !newTitle.trim()) return;
     setAddingTemplate(true);
-    await addTemplate(newKeyword.trim(), newTitle.trim());
-    setAddingTemplate(false);
-    setNewKeyword("");
-    setNewTitle("");
-    setShowAddForm(false);
+    setAddTemplateError(null);
+    try {
+      await addTemplate(newKeyword.trim(), newTitle.trim());
+      setNewKeyword("");
+      setNewTitle("");
+      setShowAddForm(false);
+    } catch (err) {
+      setAddTemplateError(err instanceof Error ? err.message : "Không thể thêm mẫu");
+    } finally {
+      setAddingTemplate(false);
+    }
   };
 
   // Close picker on outside click
@@ -597,7 +604,7 @@ export default function ChatPage() {
                       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100">
                         <span className="text-sm font-semibold text-gray-700">Tin nhắn mẫu</span>
                         <button
-                          onClick={() => setShowAddForm((s) => !s)}
+                          onClick={() => { setShowAddForm((s) => !s); setAddTemplateError(null); }}
                           className="text-gray-400 hover:text-blue-500 transition-colors"
                           title="Thêm mẫu"
                         >
@@ -622,6 +629,9 @@ export default function ChatPage() {
                             rows={2}
                             className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300 resize-none"
                           />
+                          {addTemplateError && (
+                            <p className="text-xs text-red-500">{addTemplateError}</p>
+                          )}
                           <button
                             onClick={handleAddTemplate}
                             disabled={addingTemplate || !newKeyword.trim() || !newTitle.trim()}
