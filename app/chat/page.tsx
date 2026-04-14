@@ -79,12 +79,28 @@ export default function ChatPage() {
 
   // Auth guard
   useEffect(() => {
-    fetch("/api/auth/status")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.status !== "logged_in") router.replace("/login");
-      })
-      .catch(() => router.replace("/login"));
+    const checkAuth = async () => {
+      try {
+        const res = await fetch("/api/auth/status");
+        const d = await res.json();
+        if (d.status === "logged_in") return;
+        const stored = localStorage.getItem("zalo_session");
+        if (stored) {
+          const restoreRes = await fetch("/api/auth/restore", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: stored,
+          });
+          const restoreData = await restoreRes.json();
+          if (restoreData.status === "logged_in") return;
+          localStorage.removeItem("zalo_session");
+        }
+        router.replace("/login");
+      } catch {
+        router.replace("/login");
+      }
+    };
+    checkAuth();
   }, [router]);
 
   // Load conversations
@@ -463,6 +479,7 @@ export default function ChatPage() {
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    localStorage.removeItem("zalo_session");
     router.replace("/login");
   };
 

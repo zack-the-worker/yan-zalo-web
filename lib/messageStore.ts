@@ -62,6 +62,7 @@ const MAX_PER_THREAD = 200;
 export function storeMessage(msg: ChatMessage): void {
   const store = getStore();
   const msgs = store.messages.get(msg.threadId) ?? [];
+  if (msgs.some((m) => m.id === msg.id)) return;
   msgs.push(msg);
   if (msgs.length > MAX_PER_THREAD) msgs.shift();
   store.messages.set(msg.threadId, msgs);

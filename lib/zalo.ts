@@ -1,6 +1,4 @@
-import { Zalo, API, ThreadType } from "zca-js";
-import path from "path";
-import fs from "fs";
+import { Zalo, API, ThreadType, LoginQRCallbackEventType } from "zca-js";
 import { getSocketServer } from "./socketServer";
 import { storeMessage, getMessages, updateMessageReaction, type ChatMessage } from "./messageStore";
 
@@ -41,6 +39,7 @@ interface ZaloState {
   status: LoginStatus;
   api: API | null;
   error: string | null;
+  qrImageBase64: string | null;
 }
 
 declare global {
@@ -51,7 +50,7 @@ declare global {
 
 function getState(): ZaloState {
   if (!global.__zaloState) {
-    global.__zaloState = { status: "idle", api: null, error: null };
+    global.__zaloState = { status: "idle", api: null, error: null, qrImageBase64: null };
   }
   return global.__zaloState;
 }
@@ -68,59 +67,43 @@ export function isLoggedIn(): boolean {
   return getState().status === "logged_in";
 }
 
-export const QR_PATH = path.join(process.cwd(), "public", "qr.png");
-const SESSION_PATH = path.join(process.cwd(), "data", "session.json");
-
-function saveSession(api: API): void {
-  try {
-    const ctx = api.getContext();
-    const cookieJar = api.getCookie();
-    // Store the SerializedCookie[] array (compatible with zalo.login({ cookie }))
-    const serialized = (cookieJar.toJSON() as { cookies: unknown[] }).cookies;
-    const session = {
-      imei: ctx.imei,
-      userAgent: ctx.userAgent,
-      cookies: serialized,
-    };
-    fs.mkdirSync(path.dirname(SESSION_PATH), { recursive: true });
-    fs.writeFileSync(SESSION_PATH, JSON.stringify(session, null, 2), "utf-8");
-    console.log("[zalo] Session saved.");
-  } catch (err) {
-    console.error("[zalo] Failed to save session:", err);
-  }
+export function getQRImageBase64(): string | null {
+  return getState().qrImageBase64;
 }
 
-function deleteSession(): void {
+export function getSessionForClient(): { imei: string; userAgent: string; cookies: unknown[] } | null {
+  const state = getState();
+  if (state.status !== "logged_in" || !state.api) return null;
   try {
-    if (fs.existsSync(SESSION_PATH)) fs.unlinkSync(SESSION_PATH);
+    const ctx = state.api.getContext();
+    const cookieJar = state.api.getCookie();
+    const cookies = (cookieJar.toJSON() as { cookies: unknown[] }).cookies;
+    return { imei: ctx.imei, userAgent: ctx.userAgent, cookies };
   } catch {
-    // ignore
+    return null;
   }
 }
 
-export async function trySessionLogin(): Promise<boolean> {
-  if (!fs.existsSync(SESSION_PATH)) return false;
+export async function restoreFromSession(
+  data: { imei: string; userAgent: string; cookies: unknown[] }
+): Promise<boolean> {
+  const state = getState();
+  if (state.status === "logged_in") return true;
   try {
-    const raw = JSON.parse(fs.readFileSync(SESSION_PATH, "utf-8"));
-    const { imei, userAgent, cookies } = raw;
-    if (!imei || !userAgent || !Array.isArray(cookies)) {
-      deleteSession();
-      return false;
-    }
+    const { imei, userAgent, cookies } = data;
+    if (!imei || !userAgent || !Array.isArray(cookies)) return false;
     const zalo = new Zalo({ selfListen: true, checkUpdate: false, logging: false });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api: API = await zalo.login({ cookie: cookies as any, imei, userAgent });
-    const state = getState();
     state.api = api;
     state.status = "logged_in";
     state.error = null;
     api.listener.start();
     wireMessageListener(api);
-    console.log("[zalo] Resumed session from file.");
+    console.log("[zalo] Restored session from client.");
     return true;
   } catch (err) {
-    console.error("[zalo] Session resume failed, deleting session file:", err);
-    deleteSession();
+    console.error("[zalo] Session restore failed:", err);
     return false;
   }
 }
@@ -142,13 +125,17 @@ export async function startQRLogin(): Promise<void> {
 
   // Run login in background — resolves when user scans QR
   zalo
-    .loginQR({ qrPath: QR_PATH })
+    .loginQR({}, (event) => {
+      if (event.type === LoginQRCallbackEventType.QRCodeGenerated) {
+        state.qrImageBase64 = event.data.image;
+      }
+    })
     .then((api: API) => {
       state.api = api;
       state.status = "logged_in";
+      state.qrImageBase64 = null;
       api.listener.start();
       wireMessageListener(api);
-      saveSession(api);
     })
     .catch((err: Error) => {
       state.status = "error";
@@ -175,6 +162,7 @@ export function resetLogin(): void {
   state.status = "idle";
   state.api = null;
   state.error = null;
+  state.qrImageBase64 = null;
 }
 
 export function wireMessageListener(api: API): void {

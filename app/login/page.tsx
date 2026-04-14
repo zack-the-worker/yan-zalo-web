@@ -9,30 +9,61 @@ type Status = "idle" | "loading" | "qr_generated" | "logged_in" | "error";
 export default function LoginPage() {
   const router = useRouter();
   const [status, setStatus] = useState<Status>("idle");
-  const [qrTimestamp, setQrTimestamp] = useState<number>(0);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadQRImage = async () => {
+    try {
+      const res = await fetch("/api/auth/qr");
+      if (res.ok) {
+        const data = await res.json();
+        setQrDataUrl(`data:image/png;base64,${data.image}`);
+      } else {
+        // QR not ready yet, retry
+        setTimeout(loadQRImage, 800);
+      }
+    } catch {
+      setTimeout(loadQRImage, 800);
+    }
+  };
 
   const startLogin = async () => {
     setStatus("loading");
+    setQrDataUrl(null);
     try {
       const res = await fetch("/api/auth/start-qr", { method: "POST" });
       const data = await res.json();
       if (data.status === "logged_in") {
+        await storeSessionLocally();
         router.replace("/chat");
+        return;
       }
       setStatus("qr_generated");
-      setQrTimestamp(Date.now());
+      loadQRImage();
     } catch {
       setStatus("error");
     }
   };
 
+  const storeSessionLocally = async () => {
+    try {
+      const res = await fetch("/api/auth/session");
+      if (res.ok) {
+        const data = await res.json();
+        localStorage.setItem("zalo_session", JSON.stringify(data));
+      }
+    } catch {
+      // ignore — user will need to scan QR again next time
+    }
+  };
+
   const regenerateQR = async () => {
     setStatus("loading");
+    setQrDataUrl(null);
     try {
       await fetch("/api/auth/regenerate-qr", { method: "POST" });
       setStatus("qr_generated");
-      setQrTimestamp(Date.now());
+      loadQRImage();
     } catch {
       setStatus("error");
     }
@@ -48,6 +79,7 @@ export default function LoginPage() {
         const data = await res.json();
         if (data.status === "logged_in") {
           clearInterval(pollRef.current!);
+          await storeSessionLocally();
           router.replace("/chat");
         } else if (data.status === "error") {
           clearInterval(pollRef.current!);
@@ -63,14 +95,35 @@ export default function LoginPage() {
     };
   }, [status, router]);
 
-  // Check if already logged in on mount
+  // Check if already logged in on mount; try localStorage restore if not
   useEffect(() => {
-    fetch("/api/auth/status")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.status === "logged_in") router.replace("/chat");
-      })
-      .catch(() => {});
+    const tryAutoRestore = async () => {
+      const statusRes = await fetch("/api/auth/status");
+      const statusData = await statusRes.json();
+      if (statusData.status === "logged_in") {
+        router.replace("/chat");
+        return;
+      }
+      const stored = localStorage.getItem("zalo_session");
+      if (stored) {
+        try {
+          const res = await fetch("/api/auth/restore", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: stored,
+          });
+          const d = await res.json();
+          if (d.status === "logged_in") {
+            router.replace("/chat");
+            return;
+          }
+        } catch {
+          // ignore
+        }
+        localStorage.removeItem("zalo_session");
+      }
+    };
+    tryAutoRestore().catch(() => {});
   }, [router]);
 
   return (
@@ -107,18 +160,19 @@ export default function LoginPage() {
         {status === "qr_generated" && (
           <div className="flex flex-col items-center gap-4">
             <div className="border-2 border-gray-200 rounded-xl overflow-hidden">
-              {/* Add timestamp to force browser to reload image */}
-              <img
-                src={`/qr.png?t=${qrTimestamp}`}
-                alt="Zalo QR Code"
-                width={220}
-                height={220}
-                className="block"
-                onError={() => {
-                  // QR not ready yet, retry after a moment
-                  setTimeout(() => setQrTimestamp(Date.now()), 1000);
-                }}
-              />
+              {qrDataUrl ? (
+                <img
+                  src={qrDataUrl}
+                  alt="Zalo QR Code"
+                  width={220}
+                  height={220}
+                  className="block"
+                />
+              ) : (
+                <div className="w-[220px] h-[220px] flex items-center justify-center">
+                  <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
             </div>
             <p className="text-sm text-gray-600">
               Mở <strong>Zalo</strong> → Quét mã QR này để đăng nhập

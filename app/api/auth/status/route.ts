@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
-import { getLoginStatus, trySessionLogin } from "@/lib/zalo";
+import { getLoginStatus } from "@/lib/zalo";
 
 export async function GET() {
-  if (getLoginStatus() === "logged_in") {
-    return NextResponse.json({ status: "logged_in" });
-  }
-
-  // Not logged in — try silent session resume before reporting failure
-  const resumed = await trySessionLogin();
-  return NextResponse.json({ status: resumed ? "logged_in" : getLoginStatus() });
+  return NextResponse.json({ status: getLoginStatus() });
 }
