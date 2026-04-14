@@ -2,7 +2,7 @@ import { Zalo, API, ThreadType } from "zca-js";
 import path from "path";
 import fs from "fs";
 import { getSocketServer } from "./socketServer";
-import { storeMessage, type ChatMessage } from "./messageStore";
+import { storeMessage, getMessages, updateMessageReaction, type ChatMessage } from "./messageStore";
 
 export type LoginStatus = "idle" | "qr_generated" | "logged_in" | "error";
 
@@ -177,7 +177,7 @@ export function resetLogin(): void {
   state.error = null;
 }
 
-function wireMessageListener(api: API): void {
+export function wireMessageListener(api: API): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   api.listener.on("message", async (message: any) => {
     try {
@@ -225,6 +225,7 @@ function wireMessageListener(api: API): void {
         content,
         ts: Number(data.ts ?? Date.now()),
         isSelf: message.isSelf ?? false,
+        cliMsgId: data.cliMsgId ? String(data.cliMsgId) : undefined,
         ...(mediaType && { mediaType }),
         ...(mediaUrl && { mediaUrl }),
       };
@@ -271,6 +272,30 @@ function wireMessageListener(api: API): void {
       }
     } catch (err) {
       console.error("[zalo] group_event wiring error:", err);
+    }
+  });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  api.listener.on("reaction", (event: any) => {
+    try {
+      const data = event.data ?? {};
+      const threadId: string = event.threadId ?? data.idTo ?? "";
+      const msgId: string = String(data.msgId ?? data.cliMsgId ?? "");
+      const icon: string = data.content?.rIcon ?? "";
+      const senderId: string = String(data.uidFrom ?? "");
+      const senderName: string = data.dName ?? senderId;
+
+      if (!threadId || !msgId || !icon) return;
+
+      updateMessageReaction(threadId, msgId, icon, senderId, senderName);
+
+      const io = getSocketServer();
+      if (io) {
+        const reactions = getMessages(threadId).find((m) => m.id === msgId)?.reactions ?? [];
+        io.emit("message_reaction", { threadId, msgId, reactions });
+      }
+    } catch (err) {
+      console.error("[zalo] reaction wiring error:", err);
     }
   });
 }
