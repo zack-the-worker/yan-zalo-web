@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { storeMessage, getMessages } from "./messageStore";
+import { storeMessage, getMessages, updateMessageReaction } from "./messageStore";
 import type { ChatMessage } from "./messageStore";
 
 function makeMsg(overrides: Partial<ChatMessage> = {}): ChatMessage {
@@ -62,6 +62,74 @@ describe("getMessages", () => {
     storeMessage(makeMsg({ id: "y", threadId: "t-y" }));
     expect(getMessages("t-x")).toHaveLength(1);
     expect(getMessages("t-x")[0].id).toBe("x");
+  });
+});
+
+describe("cliMsgId and reactions fields on ChatMessage", () => {
+  it("stores and retrieves a message with cliMsgId", () => {
+    const msg = makeMsg({ cliMsgId: "cli-abc-123" });
+    storeMessage(msg);
+    const result = getMessages(msg.threadId);
+    expect(result[0].cliMsgId).toBe("cli-abc-123");
+  });
+
+  it("stores and retrieves a message with reactions array", () => {
+    const msg = makeMsg({
+      reactions: [{ icon: "/-heart", senderIds: ["u1"], senderNames: ["Alice"] }],
+    });
+    storeMessage(msg);
+    const result = getMessages(msg.threadId);
+    expect(result[0].reactions).toHaveLength(1);
+    expect(result[0].reactions![0].icon).toBe("/-heart");
+  });
+});
+
+describe("updateMessageReaction", () => {
+  it("adds a new reaction to a message", () => {
+    const msg = makeMsg({ id: "msg-r1" });
+    storeMessage(msg);
+    updateMessageReaction("thread-1", "msg-r1", "/-heart", "u2", "Bob");
+    const result = getMessages("thread-1");
+    expect(result[0].reactions).toHaveLength(1);
+    expect(result[0].reactions![0]).toEqual({
+      icon: "/-heart",
+      senderIds: ["u2"],
+      senderNames: ["Bob"],
+    });
+  });
+
+  it("appends a new sender to an existing reaction icon", () => {
+    const msg = makeMsg({ id: "msg-r2" });
+    storeMessage(msg);
+    updateMessageReaction("thread-1", "msg-r2", ":>", "u1", "Alice");
+    updateMessageReaction("thread-1", "msg-r2", ":>", "u2", "Bob");
+    const result = getMessages("thread-1");
+    const reaction = result[0].reactions![0];
+    expect(reaction.senderIds).toEqual(["u1", "u2"]);
+    expect(reaction.senderNames).toEqual(["Alice", "Bob"]);
+  });
+
+  it("is idempotent — same sender + same icon does not duplicate", () => {
+    const msg = makeMsg({ id: "msg-r3" });
+    storeMessage(msg);
+    updateMessageReaction("thread-1", "msg-r3", "/-heart", "u1", "Alice");
+    updateMessageReaction("thread-1", "msg-r3", "/-heart", "u1", "Alice");
+    const result = getMessages("thread-1");
+    expect(result[0].reactions![0].senderIds).toEqual(["u1"]);
+  });
+
+  it("supports multiple different reaction icons on the same message", () => {
+    const msg = makeMsg({ id: "msg-r4" });
+    storeMessage(msg);
+    updateMessageReaction("thread-1", "msg-r4", "/-heart", "u1", "Alice");
+    updateMessageReaction("thread-1", "msg-r4", ":>", "u2", "Bob");
+    const result = getMessages("thread-1");
+    expect(result[0].reactions).toHaveLength(2);
+  });
+
+  it("does nothing when the message is not found", () => {
+    updateMessageReaction("thread-1", "nonexistent", "/-heart", "u1", "Alice");
+    expect(getMessages("thread-1")).toHaveLength(0);
   });
 });
 
