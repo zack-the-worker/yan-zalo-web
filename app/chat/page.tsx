@@ -67,7 +67,7 @@ export default function ChatPage() {
 
   // File upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   // Poll state
   const [showPollModal, setShowPollModal] = useState(false);
@@ -231,27 +231,44 @@ export default function ChatPage() {
   };
 
   const handleSend = async () => {
-    if (!active || !text.trim() || sending) return;
+    if (!active || (!text.trim() && !pendingFile) || sending) return;
     const payload = text.trim();
     setText("");
     setSending(true);
     try {
-      const res = await fetch("/api/chat/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          threadId: active.id,
-          threadType: active.type,
-          text: payload,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        console.error("Send error:", err.error);
-        setText(payload); // restore
+      if (pendingFile) {
+        const fileToSend = pendingFile;
+        setPendingFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        const form = new FormData();
+        form.append("file", fileToSend);
+        form.append("threadId", active.id);
+        form.append("threadType", active.type);
+        if (payload) form.append("text", payload);
+        const res = await fetch("/api/chat/attachment", { method: "POST", body: form });
+        if (!res.ok) {
+          const err = await res.json();
+          console.error("Attachment send error:", err.error);
+          if (payload) setText(payload);
+        }
+      } else {
+        const res = await fetch("/api/chat/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            threadId: active.id,
+            threadType: active.type,
+            text: payload,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          console.error("Send error:", err.error);
+          setText(payload); // restore
+        }
       }
     } catch {
-      setText(payload);
+      if (payload) setText(payload);
     } finally {
       setSending(false);
     }
@@ -341,22 +358,11 @@ export default function ChatPage() {
     });
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !active) return;
+    if (!file) return;
     e.target.value = "";
-    setUploading(true);
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("threadId", active.id);
-      form.append("threadType", active.type);
-      await fetch("/api/chat/attachment", { method: "POST", body: form });
-    } catch {
-      // ignore — message arrives via socket listener if successful
-    } finally {
-      setUploading(false);
-    }
+    setPendingFile(file);
   };
 
   const handleForwardConfirm = async (targetConv: Conversation) => {
@@ -655,12 +661,13 @@ export default function ChatPage() {
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`flex ${msg.isSelf ? "justify-end" : "justify-start"} relative`}
+                    className={`flex ${msg.isSelf ? "justify-end" : "justify-start"}`}
                     onMouseEnter={() => setHoveredMsgId(msg.id)}
                     onMouseLeave={() => setHoveredMsgId(null)}
                   >
+                    <div className="relative max-w-xs lg:max-w-md xl:max-w-lg">
                     <div
-                      className={`max-w-xs lg:max-w-md xl:max-w-lg ${
+                      className={`${
                         msg.isSelf ? "items-end" : "items-start"
                       } flex flex-col`}
                     >
@@ -747,6 +754,7 @@ export default function ChatPage() {
                         </button>
                       </div>
                     )}
+                    </div>
                   </div>
                 ))}
                 <div ref={messagesEndRef} />
@@ -765,15 +773,10 @@ export default function ChatPage() {
                 {/* File attachment button */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
                   className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0"
                   title="Đính kèm file"
                 >
-                  {uploading ? (
-                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Paperclip className="w-5 h-5" />
-                  )}
+                  <Paperclip className="w-5 h-5" />
                 </button>
 
                 {/* Poll button (group-only) */}
@@ -996,19 +999,34 @@ export default function ChatPage() {
                   )}
                 </div>
 
-                <textarea
-                  ref={inputRef}
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Nhập tin nhắn... (Enter để gửi, Shift+Enter xuống dòng)"
-                  rows={1}
-                  className="flex-1 resize-none text-sm border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-300 max-h-32 overflow-y-auto"
-                  style={{ minHeight: "44px" }}
-                />
+                <div className="flex-1 flex flex-col gap-1">
+                  {pendingFile && (
+                    <div className="flex items-center gap-2 px-1">
+                      <Paperclip className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                      <span className="text-xs text-gray-600 truncate flex-1">{pendingFile.name}</span>
+                      <button
+                        onClick={() => { setPendingFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                        className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 text-sm leading-none"
+                        title="Xóa file"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+                  <textarea
+                    ref={inputRef}
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Nhập tin nhắn... (Enter để gửi, Shift+Enter xuống dòng)"
+                    rows={1}
+                    className="flex-1 resize-none text-sm border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-300 max-h-32 overflow-y-auto"
+                    style={{ minHeight: "44px" }}
+                  />
+                </div>
                 <button
                   onClick={handleSend}
-                  disabled={!text.trim() || sending}
+                  disabled={(!text.trim() && !pendingFile) || sending}
                   className="bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white px-5 py-3 rounded-xl text-sm font-medium transition-colors flex-shrink-0"
                 >
                   {sending ? "..." : "Gửi"}
