@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
-import { Smile, MessageSquare, BookMarked, Plus } from "lucide-react";
-import type { ChatMessage, Conversation } from "@/lib/messageStore";
+import { Smile, MessageSquare, BookMarked, Plus, Paperclip, Forward, BarChart2 } from "lucide-react";
+import type { ChatMessage, Conversation, MessageReaction } from "@/lib/messageStore";
 import type { StickerDetail, Tab, PickerTab } from "@/types/chat";
 import { useQuickMessages } from "@/lib/useQuickMessages";
+import { REACTION_ICONS, REACTION_SHORTCODES } from "@/lib/reactionIcons";
 
 // Common emoji groups for the emoji tab
 const EMOJI_GROUPS = [
@@ -55,6 +56,26 @@ export default function ChatPage() {
   const [addingTemplate, setAddingTemplate] = useState(false);
   const [addTemplateError, setAddTemplateError] = useState<string | null>(null);
   const { templates, loading: templatesLoading, addTemplate } = useQuickMessages();
+
+  // Reaction hover state
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+
+  // Forward message state
+  const [forwardingMessage, setForwardingMessage] = useState<ChatMessage | null>(null);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [forwardSuccess, setForwardSuccess] = useState(false);
+
+  // File upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  // Poll state
+  const [showPollModal, setShowPollModal] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState(["", ""]);
+  const [pollMultiChoice, setPollMultiChoice] = useState(false);
+  const [pollAnonymous, setPollAnonymous] = useState(false);
+  const [pollCreating, setPollCreating] = useState(false);
 
   // Auth guard
   useEffect(() => {
@@ -181,6 +202,23 @@ export default function ChatPage() {
     };
   }, []); // register once only — uses activeRef, not active state
 
+  // Socket.io for real-time reactions
+  useEffect(() => {
+    const sock = getSocket();
+
+    const onReaction = (payload: { threadId: string; msgId: string; reactions: MessageReaction[] }) => {
+      if (payload.threadId !== activeRef.current?.id) return;
+      setMessages((prev) =>
+        prev.map((m) => m.id === payload.msgId ? { ...m, reactions: payload.reactions } : m)
+      );
+    };
+
+    sock.on("message_reaction", onReaction);
+    return () => {
+      sock.off("message_reaction", onReaction);
+    };
+  }, []);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -284,6 +322,94 @@ export default function ChatPage() {
       setAddTemplateError(err instanceof Error ? err.message : "Không thể thêm mẫu");
     } finally {
       setAddingTemplate(false);
+    }
+  };
+
+  const handleAddReaction = async (msg: ChatMessage, icon: string) => {
+    if (!active) return;
+    setHoveredMsgId(null);
+    await fetch("/api/chat/reaction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        icon,
+        messageId: msg.id,
+        cliMsgId: msg.cliMsgId ?? msg.id,
+        threadId: active.id,
+        threadType: active.type,
+      }),
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !active) return;
+    e.target.value = "";
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("threadId", active.id);
+      form.append("threadType", active.type);
+      await fetch("/api/chat/attachment", { method: "POST", body: form });
+    } catch {
+      // ignore — message arrives via socket listener if successful
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleForwardConfirm = async (targetConv: Conversation) => {
+    if (!forwardingMessage) return;
+    try {
+      await fetch("/api/chat/forward", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageContent: forwardingMessage.content,
+          messageId: forwardingMessage.id,
+          messageTs: forwardingMessage.ts,
+          targetThreadId: targetConv.id,
+          targetThreadType: targetConv.type,
+        }),
+      });
+      setForwardSuccess(true);
+      setTimeout(() => {
+        setForwardingMessage(null);
+        setForwardSearch("");
+        setForwardSuccess(false);
+      }, 1200);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleCreatePoll = async () => {
+    if (!active || !pollQuestion.trim()) return;
+    const validOptions = pollOptions.filter((o) => o.trim());
+    if (validOptions.length < 2) return;
+    setPollCreating(true);
+    try {
+      await fetch("/api/chat/poll", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: pollQuestion.trim(),
+          options: validOptions,
+          groupId: active.id,
+          allowMultiChoices: pollMultiChoice,
+          isAnonymous: pollAnonymous,
+        }),
+      });
+      setShowPollModal(false);
+      setPollQuestion("");
+      setPollOptions(["", ""]);
+      setPollMultiChoice(false);
+      setPollAnonymous(false);
+    } catch {
+      // ignore
+    } finally {
+      setPollCreating(false);
     }
   };
 
@@ -529,7 +655,9 @@ export default function ChatPage() {
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`flex ${msg.isSelf ? "justify-end" : "justify-start"}`}
+                    className={`flex ${msg.isSelf ? "justify-end" : "justify-start"} relative`}
+                    onMouseEnter={() => setHoveredMsgId(msg.id)}
+                    onMouseLeave={() => setHoveredMsgId(null)}
                   >
                     <div
                       className={`max-w-xs lg:max-w-md xl:max-w-lg ${
@@ -563,14 +691,62 @@ export default function ChatPage() {
                           ) : (
                             <span className="text-2xl">🖼</span>
                           )
+                        ) : msg.mediaType === "file" ? (
+                          <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="underline flex items-center gap-1">
+                            <Paperclip className="w-3 h-3" /> {msg.content}
+                          </a>
                         ) : (
                           msg.content
                         )}
                       </div>
+
+                      {/* Reaction pills */}
+                      {msg.reactions && msg.reactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1 ml-1">
+                          {msg.reactions.map((r) => (
+                            <span
+                              key={r.icon}
+                              className="flex items-center gap-0.5 text-xs bg-gray-100 rounded-full px-2 py-0.5"
+                              title={r.senderNames.join(", ")}
+                            >
+                              {REACTION_ICONS[r.icon] ?? r.icon} {r.senderIds.length}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       <span className="text-xs text-gray-400 mt-1 mx-1">
                         {formatTime(msg.ts)}
                       </span>
                     </div>
+
+                    {/* Hover action bar — reaction picker + forward */}
+                    {hoveredMsgId === msg.id && (
+                      <div
+                        className={`absolute top-0 flex items-center gap-1 bg-white border border-gray-200 shadow-lg rounded-full px-2 py-1 z-10 ${
+                          msg.isSelf ? "right-full mr-2" : "left-full ml-2"
+                        }`}
+                      >
+                        {REACTION_SHORTCODES.map((code) => (
+                          <button
+                            key={code}
+                            onClick={() => handleAddReaction(msg, code)}
+                            className="text-base hover:scale-125 transition-transform leading-none"
+                            title={code}
+                          >
+                            {REACTION_ICONS[code]}
+                          </button>
+                        ))}
+                        <div className="w-px h-4 bg-gray-200 mx-0.5" />
+                        <button
+                          onClick={() => { setForwardingMessage(msg); setForwardSearch(""); setForwardSuccess(false); }}
+                          className="text-gray-400 hover:text-blue-500 transition-colors"
+                          title="Chuyển tiếp"
+                        >
+                          <Forward className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div ref={messagesEndRef} />
@@ -578,6 +754,37 @@ export default function ChatPage() {
 
               {/* Input */}
               <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-end gap-2 flex-shrink-0">
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+
+                {/* File attachment button */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors flex-shrink-0"
+                  title="Đính kèm file"
+                >
+                  {uploading ? (
+                    <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Paperclip className="w-5 h-5" />
+                  )}
+                </button>
+
+                {/* Poll button (group-only) */}
+                <button
+                  onClick={() => { if (active?.type === "Group") setShowPollModal(true); }}
+                  disabled={active?.type !== "Group"}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+                  title={active?.type === "Group" ? "Tạo bình chọn" : "Chỉ dùng trong nhóm"}
+                >
+                  <BarChart2 className="w-5 h-5" />
+                </button>
                 {/* Quick message template panel */}
                 <div className="relative flex-shrink-0">
                   <button
@@ -811,6 +1018,126 @@ export default function ChatPage() {
           )}
         </main>
       </div>
+
+      {/* Forward Message Modal */}
+      {forwardingMessage && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setForwardingMessage(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-96 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-800">Chuyển tiếp tin nhắn</h3>
+              <button onClick={() => setForwardingMessage(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            {forwardSuccess ? (
+              <div className="flex-1 flex items-center justify-center p-6">
+                <p className="text-green-600 font-medium">✓ Đã chuyển tiếp!</p>
+              </div>
+            ) : (
+              <>
+                <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
+                  <p className="text-xs text-gray-500 truncate">"{forwardingMessage.content}"</p>
+                </div>
+                <div className="px-4 py-2 border-b border-gray-100">
+                  <input
+                    type="text"
+                    value={forwardSearch}
+                    onChange={(e) => setForwardSearch(e.target.value)}
+                    placeholder="Tìm cuộc trò chuyện..."
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    autoFocus
+                  />
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {conversations
+                    .filter((c) => !forwardSearch || c.name.toLowerCase().includes(forwardSearch.toLowerCase()))
+                    .map((conv) => (
+                      <button
+                        key={conv.id}
+                        onClick={() => handleForwardConfirm(conv)}
+                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0 ${conv.type === "Group" ? "bg-green-500" : "bg-blue-400"}`}>
+                          {conv.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{conv.name}</p>
+                          <p className="text-xs text-gray-400">{conv.type === "Group" ? "Nhóm" : "Bạn bè"}</p>
+                        </div>
+                      </button>
+                    ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Poll Creation Modal */}
+      {showPollModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setShowPollModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-96 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-800">Tạo bình chọn</h3>
+              <button onClick={() => setShowPollModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Câu hỏi</label>
+                <input
+                  type="text"
+                  value={pollQuestion}
+                  onChange={(e) => setPollQuestion(e.target.value)}
+                  placeholder="Nhập câu hỏi bình chọn..."
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Các lựa chọn (tối thiểu 2)</label>
+                <div className="space-y-2">
+                  {pollOptions.map((opt, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={opt}
+                        onChange={(e) => { const next = [...pollOptions]; next[i] = e.target.value; setPollOptions(next); }}
+                        placeholder={`Lựa chọn ${i + 1}`}
+                        className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      />
+                      {pollOptions.length > 2 && (
+                        <button onClick={() => setPollOptions(pollOptions.filter((_, j) => j !== i))} className="text-gray-400 hover:text-red-500 text-sm px-1">✕</button>
+                      )}
+                    </div>
+                  ))}
+                  {pollOptions.length < 10 && (
+                    <button onClick={() => setPollOptions([...pollOptions, ""])} className="text-sm text-blue-500 hover:text-blue-600 flex items-center gap-1">
+                      <Plus className="w-3 h-3" /> Thêm lựa chọn
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2 pt-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={pollMultiChoice} onChange={(e) => setPollMultiChoice(e.target.checked)} className="rounded" />
+                  <span className="text-sm text-gray-700">Cho phép chọn nhiều đáp án</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={pollAnonymous} onChange={(e) => setPollAnonymous(e.target.checked)} className="rounded" />
+                  <span className="text-sm text-gray-700">Bình chọn ẩn danh</span>
+                </label>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100">
+              <button
+                onClick={handleCreatePoll}
+                disabled={pollCreating || !pollQuestion.trim() || pollOptions.filter((o) => o.trim()).length < 2}
+                className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
+              >
+                {pollCreating ? "Đang tạo..." : "Tạo bình chọn"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
