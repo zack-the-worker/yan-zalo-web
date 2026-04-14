@@ -33,3 +33,27 @@ export interface FriendRecsResponse {
   recommItems: { recommItemType: number; dataInfo: FriendRecInfo }[];
   expiredDuration: number;
 }
+
+export interface ParseLinkMedia {
+  type: number;
+  count: number;
+  mediaTitle: string;
+  artist: string;
+  streamUrl: string;
+  stream_icon: string;
+}
+
+export interface ParseLinkData {
+  thumb: string;
+  title: string;
+  desc: string;
+  src: string;
+  href: string;
+  media: ParseLinkMedia;
+  stream_icon: string;
+}
+
+export interface ParseLinkResult {
+  data: ParseLinkData;
+  error_maps: Record<string, number>;
+}
