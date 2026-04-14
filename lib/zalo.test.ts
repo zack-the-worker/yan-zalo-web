@@ -12,6 +12,8 @@ vi.mock("./socketServer", () => ({
 
 vi.mock("./messageStore", () => ({
   storeMessage: vi.fn(),
+  getMessages: vi.fn(() => []),
+  updateMessageReaction: vi.fn(),
 }));
 
 // Import after mocks are registered
@@ -19,8 +21,11 @@ import {
   getGroupEvents,
   clearGroupEvents,
   getLoginStatus,
+  wireMessageListener,
 } from "./zalo";
 import type { GroupEventLog } from "./zalo";
+import { updateMessageReaction, getMessages } from "./messageStore";
+import { getSocketServer } from "./socketServer";
 
 function makeEvent(overrides: Partial<GroupEventLog> = {}): GroupEventLog {
   return {
@@ -71,5 +76,73 @@ describe("clearGroupEvents", () => {
 describe("getLoginStatus", () => {
   it("returns 'idle' when no state has been initialized", () => {
     expect(getLoginStatus()).toBe("idle");
+  });
+});
+
+describe("wireMessageListener — reaction event", () => {
+  beforeEach(() => vi.clearAllMocks());
+  it("calls updateMessageReaction when a reaction event fires", () => {
+    const handlers: Record<string, (event: unknown) => void> = {};
+    const mockApi = {
+      listener: { on: vi.fn((event: string, cb: (e: unknown) => void) => { handlers[event] = cb; }) },
+      getOwnId: vi.fn(() => "own-id"),
+      getStickersDetail: vi.fn(),
+    };
+
+    wireMessageListener(mockApi as never);
+
+    handlers["reaction"]({
+      threadId: "t-1",
+      data: {
+        msgId: "m-1",
+        uidFrom: "u-2",
+        dName: "Bob",
+        content: { rIcon: "/-heart" },
+      },
+    });
+
+    expect(updateMessageReaction).toHaveBeenCalledWith("t-1", "m-1", "/-heart", "u-2", "Bob");
+  });
+
+  it("emits message_reaction via socket when reaction fires and io is available", () => {
+    const mockEmit = vi.fn();
+    vi.mocked(getSocketServer).mockReturnValue({ emit: mockEmit } as never);
+    vi.mocked(getMessages).mockReturnValue([
+      { id: "m-1", threadId: "t-1", reactions: [{ icon: "/-heart", senderIds: ["u-2"], senderNames: ["Bob"] }] } as never,
+    ]);
+
+    const handlers: Record<string, (event: unknown) => void> = {};
+    const mockApi = {
+      listener: { on: vi.fn((event: string, cb: (e: unknown) => void) => { handlers[event] = cb; }) },
+      getOwnId: vi.fn(() => "own-id"),
+      getStickersDetail: vi.fn(),
+    };
+
+    wireMessageListener(mockApi as never);
+
+    handlers["reaction"]({
+      threadId: "t-1",
+      data: { msgId: "m-1", uidFrom: "u-2", dName: "Bob", content: { rIcon: "/-heart" } },
+    });
+
+    expect(mockEmit).toHaveBeenCalledWith("message_reaction", expect.objectContaining({
+      threadId: "t-1",
+      msgId: "m-1",
+    }));
+  });
+
+  it("does nothing when icon is missing from reaction event", () => {
+    const handlers: Record<string, (event: unknown) => void> = {};
+    const mockApi = {
+      listener: { on: vi.fn((event: string, cb: (e: unknown) => void) => { handlers[event] = cb; }) },
+      getOwnId: vi.fn(() => "own-id"),
+      getStickersDetail: vi.fn(),
+    };
+
+    wireMessageListener(mockApi as never);
+
+    handlers["reaction"]({ threadId: "t-1", data: { msgId: "m-1", uidFrom: "u-2", content: {} } });
+
+    expect(updateMessageReaction).not.toHaveBeenCalled();
   });
 });
