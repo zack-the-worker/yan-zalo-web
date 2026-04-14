@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Zalo Manager",
+  title: "YAN Zalo",
   description: "Quản lý Zalo với zca-js",
 };
 

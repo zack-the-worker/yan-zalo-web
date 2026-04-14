@@ -291,8 +291,7 @@ export function wireMessageListener(api: API): void {
 
       const io = getSocketServer();
       if (io) {
-        const reactions = getMessages(threadId).find((m) => m.id === msgId)?.reactions ?? [];
-        io.emit("message_reaction", { threadId, msgId, reactions });
+        io.emit("message_reaction", { threadId, msgId, icon, senderId, senderName });
       }
     } catch (err) {
       console.error("[zalo] reaction wiring error:", err);

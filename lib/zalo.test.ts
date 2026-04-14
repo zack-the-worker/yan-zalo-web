@@ -107,9 +107,6 @@ describe("wireMessageListener — reaction event", () => {
   it("emits message_reaction via socket when reaction fires and io is available", () => {
     const mockEmit = vi.fn();
     vi.mocked(getSocketServer).mockReturnValue({ emit: mockEmit } as never);
-    vi.mocked(getMessages).mockReturnValue([
-      { id: "m-1", threadId: "t-1", reactions: [{ icon: "/-heart", senderIds: ["u-2"], senderNames: ["Bob"] }] } as never,
-    ]);
 
     const handlers: Record<string, (event: unknown) => void> = {};
     const mockApi = {
@@ -128,6 +125,9 @@ describe("wireMessageListener — reaction event", () => {
     expect(mockEmit).toHaveBeenCalledWith("message_reaction", expect.objectContaining({
       threadId: "t-1",
       msgId: "m-1",
+      icon: "/-heart",
+      senderId: "u-2",
+      senderName: "Bob",
     }));
   });
 

@@ -206,10 +206,23 @@ export default function ChatPage() {
   useEffect(() => {
     const sock = getSocket();
 
-    const onReaction = (payload: { threadId: string; msgId: string; reactions: MessageReaction[] }) => {
+    const onReaction = (payload: { threadId: string; msgId: string; icon: string; senderId: string; senderName: string }) => {
       if (payload.threadId !== activeRef.current?.id) return;
       setMessages((prev) =>
-        prev.map((m) => m.id === payload.msgId ? { ...m, reactions: payload.reactions } : m)
+        prev.map((m) => {
+          if (m.id !== payload.msgId) return m;
+          const reactions: MessageReaction[] = m.reactions ? [...m.reactions] : [];
+          const existing = reactions.find((r) => r.icon === payload.icon);
+          if (existing) {
+            if (existing.senderIds.includes(payload.senderId)) return m;
+            return { ...m, reactions: reactions.map((r) =>
+              r.icon === payload.icon
+                ? { ...r, senderIds: [...r.senderIds, payload.senderId], senderNames: [...r.senderNames, payload.senderName] }
+                : r
+            )};
+          }
+          return { ...m, reactions: [...reactions, { icon: payload.icon, senderIds: [payload.senderId], senderNames: [payload.senderName] }] };
+        })
       );
     };
 
@@ -483,7 +496,7 @@ export default function ChatPage() {
             <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
               <span className="text-white font-bold text-xs">Z</span>
             </div>
-            <span className="font-bold text-gray-800">Zalo Manager</span>
+            <span className="font-bold text-gray-800">YAN Zalo</span>
           </div>
           <nav className="flex gap-1 items-center">
             <a
@@ -497,12 +510,25 @@ export default function ChatPage() {
             </span>
           </nav>
         </div>
-        <button
-          onClick={handleLogout}
-          className="text-sm text-gray-500 hover:text-red-500 transition-colors"
-        >
-          Đăng xuất
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href="https://github.com/zack-the-worker/yan-zalo-web"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-gray-400 hover:text-gray-700 transition-colors"
+            title="GitHub"
+          >
+            <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.004.071 1.532 1.032 1.532 1.032.892 1.529 2.341 1.087 2.91.832.091-.647.35-1.087.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836a9.59 9.59 0 0 1 2.504.337c1.909-1.294 2.748-1.025 2.748-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.744 0 .267.18.579.688.481C19.138 20.163 22 16.418 22 12c0-5.523-4.477-10-10-10z" />
+            </svg>
+          </a>
+          <button
+            onClick={handleLogout}
+            className="text-sm text-gray-500 hover:text-red-500 transition-colors"
+          >
+            Đăng xuất
+          </button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
@@ -1052,7 +1078,7 @@ export default function ChatPage() {
             ) : (
               <>
                 <div className="px-4 py-2 border-b border-gray-100 bg-gray-50">
-                  <p className="text-xs text-gray-500 truncate">"{forwardingMessage.content}"</p>
+                  <p className="text-xs text-gray-500 truncate">"{forwardingMessage?.content}"</p>
                 </div>
                 <div className="px-4 py-2 border-b border-gray-100">
                   <input
