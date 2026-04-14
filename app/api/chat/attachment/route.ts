@@ -25,6 +25,7 @@ export async function POST(req: Request) {
   const file = formData.get("file") as File | null;
   const threadId = formData.get("threadId") as string | null;
   const threadType = formData.get("threadType") as string | null;
+  const textContent = formData.get("text") as string | null;
 
   if (!file || typeof (file as { arrayBuffer?: unknown }).arrayBuffer !== "function") {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
@@ -42,8 +43,12 @@ export async function POST(req: Request) {
     const buffer = Buffer.from(await (file as { arrayBuffer(): Promise<ArrayBuffer> }).arrayBuffer());
     fs.writeFileSync(tmpPath, buffer);
 
-    const results = await api.uploadAttachment(tmpPath, threadId, type);
-    return NextResponse.json({ results });
+    const result = await api.sendMessage(
+      { msg: textContent?.trim() ?? "", attachments: [tmpPath] },
+      threadId,
+      type,
+    );
+    return NextResponse.json({ result });
   } finally {
     try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup error */ }
   }
