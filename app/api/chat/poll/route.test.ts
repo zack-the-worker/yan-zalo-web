@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, POST } from "./route";
 
@@ -13,10 +14,10 @@ vi.mock("@/lib/zalo", () => ({
 import { isLoggedIn, getZaloApi } from "@/lib/zalo";
 
 function makePostRequest(body: Record<string, unknown>) {
-  return new Request("http://localhost/api/chat/poll", {
+  return new NextRequest("http://localhost/api/chat/poll", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Cookie": "zalo_sid=test-sid" },
   });
 }
 
@@ -75,7 +76,7 @@ describe("GET /api/chat/poll (getPollDetail)", () => {
 
   it("returns 401 when not logged in", async () => {
     vi.mocked(isLoggedIn).mockReturnValue(false);
-    const req = new Request("http://localhost/api/chat/poll?pollId=42");
+    const req = new NextRequest("http://localhost/api/chat/poll?pollId=42", { headers: { "Cookie": "zalo_sid=test-sid" } });
     const res = await GET(req as never);
     expect(res.status).toBe(401);
   });
@@ -83,7 +84,7 @@ describe("GET /api/chat/poll (getPollDetail)", () => {
   it("returns 400 when pollId is missing", async () => {
     vi.mocked(isLoggedIn).mockReturnValue(true);
     vi.mocked(getZaloApi).mockReturnValue({ getPollDetail: vi.fn() } as never);
-    const req = new Request("http://localhost/api/chat/poll");
+    const req = new NextRequest("http://localhost/api/chat/poll", { headers: { "Cookie": "zalo_sid=test-sid" } });
     const res = await GET(req as never);
     expect(res.status).toBe(400);
   });
@@ -92,7 +93,7 @@ describe("GET /api/chat/poll (getPollDetail)", () => {
     vi.mocked(isLoggedIn).mockReturnValue(true);
     const mockDetail = vi.fn().mockResolvedValue({ pollId: 42, question: "Test?" });
     vi.mocked(getZaloApi).mockReturnValue({ getPollDetail: mockDetail } as never);
-    const req = new Request("http://localhost/api/chat/poll?pollId=42");
+    const req = new NextRequest("http://localhost/api/chat/poll?pollId=42", { headers: { "Cookie": "zalo_sid=test-sid" } });
     const res = await GET(req as never);
     expect(res.status).toBe(200);
     expect(mockDetail).toHaveBeenCalledWith(42);

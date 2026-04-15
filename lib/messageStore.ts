@@ -34,33 +34,28 @@ export interface Conversation {
   unread: number;
 }
 
-// In-memory store
-declare global {
-  // eslint-disable-next-line no-var
-  var __messageStore:
-    | {
-        // threadId → message list (capped at 200 per thread)
-        messages: Map<string, ChatMessage[]>;
-        // threadId → conversation metadata
-        conversations: Map<string, Conversation>;
-      }
-    | undefined;
+interface SessionStore {
+  messages: Map<string, ChatMessage[]>;
+  conversations: Map<string, Conversation>;
 }
 
-function getStore() {
-  if (!global.__messageStore) {
-    global.__messageStore = {
-      messages: new Map(),
-      conversations: new Map(),
-    };
+declare global {
+  // eslint-disable-next-line no-var
+  var __messageStore: Map<string, SessionStore> | undefined;
+}
+
+function getStore(sessionId: string): SessionStore {
+  if (!global.__messageStore) global.__messageStore = new Map();
+  if (!global.__messageStore.has(sessionId)) {
+    global.__messageStore.set(sessionId, { messages: new Map(), conversations: new Map() });
   }
-  return global.__messageStore;
+  return global.__messageStore.get(sessionId)!;
 }
 
 const MAX_PER_THREAD = 200;
 
-export function storeMessage(msg: ChatMessage): void {
-  const store = getStore();
+export function storeMessage(msg: ChatMessage, sessionId: string): void {
+  const store = getStore(sessionId);
   const msgs = store.messages.get(msg.threadId) ?? [];
   if (msgs.some((m) => m.id === msg.id)) return;
   msgs.push(msg);
@@ -83,18 +78,18 @@ export function storeMessage(msg: ChatMessage): void {
   }
 }
 
-export function getMessages(threadId: string): ChatMessage[] {
-  return getStore().messages.get(threadId) ?? [];
+export function getMessages(threadId: string, sessionId: string): ChatMessage[] {
+  return getStore(sessionId).messages.get(threadId) ?? [];
 }
 
-export function getConversations(): Conversation[] {
-  return Array.from(getStore().conversations.values()).sort(
+export function getConversations(sessionId: string): Conversation[] {
+  return Array.from(getStore(sessionId).conversations.values()).sort(
     (a, b) => (b.lastMessage?.ts ?? 0) - (a.lastMessage?.ts ?? 0)
   );
 }
 
-export function upsertConversation(conv: Partial<Conversation> & { id: string }): void {
-  const store = getStore();
+export function upsertConversation(conv: Partial<Conversation> & { id: string }, sessionId: string): void {
+  const store = getStore(sessionId);
   const existing = store.conversations.get(conv.id) ?? {
     id: conv.id,
     type: conv.type ?? "User",
@@ -104,8 +99,8 @@ export function upsertConversation(conv: Partial<Conversation> & { id: string })
   store.conversations.set(conv.id, { ...existing, ...conv });
 }
 
-export function markRead(threadId: string): void {
-  const store = getStore();
+export function markRead(threadId: string, sessionId: string): void {
+  const store = getStore(sessionId);
   const conv = store.conversations.get(threadId);
   if (conv) conv.unread = 0;
 }
@@ -115,9 +110,10 @@ export function updateMessageReaction(
   msgId: string,
   icon: string,
   senderId: string,
-  senderName: string
+  senderName: string,
+  sessionId: string
 ): void {
-  const msgs = getStore().messages.get(threadId);
+  const msgs = getStore(sessionId).messages.get(threadId);
   if (!msgs) return;
   const msg = msgs.find((m) => m.id === msgId);
   if (!msg) return;

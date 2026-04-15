@@ -14,7 +14,11 @@ export function initSocketServer(httpServer: HttpServer): Server {
     });
 
     global.__ioServer.on("connection", (socket) => {
-      console.log("[socket.io] client connected:", socket.id);
+      const cookieHeader = socket.handshake.headers.cookie ?? "";
+      const match = cookieHeader.match(/(?:^|;\s*)zalo_sid=([^;]+)/);
+      const sessionId = match ? decodeURIComponent(match[1]) : null;
+      if (sessionId) socket.join(sessionId);
+      console.log("[socket.io] client connected:", socket.id, "session:", sessionId ?? "none");
       socket.on("disconnect", () => {
         console.log("[socket.io] client disconnected:", socket.id);
       });

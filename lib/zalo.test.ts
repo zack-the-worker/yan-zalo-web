@@ -41,41 +41,41 @@ function makeEvent(overrides: Partial<GroupEventLog> = {}): GroupEventLog {
 }
 
 beforeEach(() => {
-  global.__groupEvents = undefined;
-  global.__zaloState = undefined;
+  global.__zaloGroupEvents = undefined;
+  global.__zaloSessions = undefined;
 });
 
 describe("getGroupEvents", () => {
   it("returns [] when no events have been recorded", () => {
-    expect(getGroupEvents()).toEqual([]);
+    expect(getGroupEvents("s1")).toEqual([]);
   });
 
   it("returns a copy of stored events", () => {
-    global.__groupEvents = [makeEvent()];
-    const result = getGroupEvents();
+    global.__zaloGroupEvents = new Map([["s1", [makeEvent()]]]);
+    const result = getGroupEvents("s1");
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe("evt-1");
     // Must be a copy, not the same array reference
-    expect(result).not.toBe(global.__groupEvents);
+    expect(result).not.toBe(global.__zaloGroupEvents.get("s1"));
   });
 });
 
 describe("clearGroupEvents", () => {
   it("empties the event store", () => {
-    global.__groupEvents = [makeEvent(), makeEvent({ id: "evt-2" })];
-    clearGroupEvents();
-    expect(getGroupEvents()).toEqual([]);
+    global.__zaloGroupEvents = new Map([["s1", [makeEvent(), makeEvent({ id: "evt-2" })]]]);
+    clearGroupEvents("s1");
+    expect(getGroupEvents("s1")).toEqual([]);
   });
 
   it("is a no-op when the store is already empty", () => {
-    expect(() => clearGroupEvents()).not.toThrow();
-    expect(getGroupEvents()).toEqual([]);
+    expect(() => clearGroupEvents("s1")).not.toThrow();
+    expect(getGroupEvents("s1")).toEqual([]);
   });
 });
 
 describe("getLoginStatus", () => {
   it("returns 'idle' when no state has been initialized", () => {
-    expect(getLoginStatus()).toBe("idle");
+    expect(getLoginStatus("s1")).toBe("idle");
   });
 });
 
@@ -89,7 +89,7 @@ describe("wireMessageListener — reaction event", () => {
       getStickersDetail: vi.fn(),
     };
 
-    wireMessageListener(mockApi as never);
+    wireMessageListener(mockApi as never, "s1");
 
     handlers["reaction"]({
       threadId: "t-1",
@@ -101,12 +101,13 @@ describe("wireMessageListener — reaction event", () => {
       },
     });
 
-    expect(updateMessageReaction).toHaveBeenCalledWith("t-1", "m-1", "/-heart", "u-2", "Bob");
+    expect(updateMessageReaction).toHaveBeenCalledWith("t-1", "m-1", "/-heart", "u-2", "Bob", "s1");
   });
 
   it("emits message_reaction via socket when reaction fires and io is available", () => {
     const mockEmit = vi.fn();
-    vi.mocked(getSocketServer).mockReturnValue({ emit: mockEmit } as never);
+    const mockTo = vi.fn(() => ({ emit: mockEmit }));
+    vi.mocked(getSocketServer).mockReturnValue({ to: mockTo } as never);
 
     const handlers: Record<string, (event: unknown) => void> = {};
     const mockApi = {
@@ -115,13 +116,14 @@ describe("wireMessageListener — reaction event", () => {
       getStickersDetail: vi.fn(),
     };
 
-    wireMessageListener(mockApi as never);
+    wireMessageListener(mockApi as never, "s1");
 
     handlers["reaction"]({
       threadId: "t-1",
       data: { msgId: "m-1", uidFrom: "u-2", dName: "Bob", content: { rIcon: "/-heart" } },
     });
 
+    expect(mockTo).toHaveBeenCalledWith("s1");
     expect(mockEmit).toHaveBeenCalledWith("message_reaction", expect.objectContaining({
       threadId: "t-1",
       msgId: "m-1",
@@ -139,7 +141,7 @@ describe("wireMessageListener — reaction event", () => {
       getStickersDetail: vi.fn(),
     };
 
-    wireMessageListener(mockApi as never);
+    wireMessageListener(mockApi as never, "s1");
 
     handlers["reaction"]({ threadId: "t-1", data: { msgId: "m-1", uidFrom: "u-2", content: {} } });
 

@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getZaloApi, isLoggedIn } from "@/lib/zalo";
 
-export async function GET() {
-  if (!isLoggedIn()) {
+export async function GET(req: NextRequest) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
   }
 
-  const api = getZaloApi()!;
+  const api = getZaloApi(sid)!;
   try {
     const result = await api.getFriendRecommendations();
     return NextResponse.json(result);

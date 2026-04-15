@@ -1,6 +1,6 @@
 import { Zalo, API, ThreadType, LoginQRCallbackEventType } from "zca-js";
 import { getSocketServer } from "./socketServer";
-import { storeMessage, getMessages, updateMessageReaction, type ChatMessage } from "./messageStore";
+import { storeMessage, updateMessageReaction, type ChatMessage } from "./messageStore";
 
 export type LoginStatus = "idle" | "qr_generated" | "logged_in" | "error";
 
@@ -17,22 +17,23 @@ export interface GroupEventLog {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __groupEvents: GroupEventLog[] | undefined;
+  var __zaloGroupEvents: Map<string, GroupEventLog[]> | undefined;
 }
 
 const MAX_GROUP_EVENTS = 500;
 
-function getEventStore(): GroupEventLog[] {
-  if (!global.__groupEvents) global.__groupEvents = [];
-  return global.__groupEvents;
+function getEventStore(sessionId: string): GroupEventLog[] {
+  if (!global.__zaloGroupEvents) global.__zaloGroupEvents = new Map();
+  if (!global.__zaloGroupEvents.has(sessionId)) global.__zaloGroupEvents.set(sessionId, []);
+  return global.__zaloGroupEvents.get(sessionId)!;
 }
 
-export function getGroupEvents(): GroupEventLog[] {
-  return [...getEventStore()];
+export function getGroupEvents(sessionId: string): GroupEventLog[] {
+  return [...getEventStore(sessionId)];
 }
 
-export function clearGroupEvents(): void {
-  global.__groupEvents = [];
+export function clearGroupEvents(sessionId: string): void {
+  if (global.__zaloGroupEvents) global.__zaloGroupEvents.set(sessionId, []);
 }
 
 interface ZaloState {
@@ -44,35 +45,40 @@ interface ZaloState {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __zaloState: ZaloState | undefined;
-  // __groupEvents is declared above
+  var __zaloSessions: Map<string, ZaloState> | undefined;
 }
 
-function getState(): ZaloState {
-  if (!global.__zaloState) {
-    global.__zaloState = { status: "idle", api: null, error: null, qrImageBase64: null };
+function getSessionMap(): Map<string, ZaloState> {
+  if (!global.__zaloSessions) global.__zaloSessions = new Map();
+  return global.__zaloSessions;
+}
+
+function getState(sessionId: string): ZaloState {
+  const map = getSessionMap();
+  if (!map.has(sessionId)) {
+    map.set(sessionId, { status: "idle", api: null, error: null, qrImageBase64: null });
   }
-  return global.__zaloState;
+  return map.get(sessionId)!;
 }
 
-export function getLoginStatus(): LoginStatus {
-  return getState().status;
+export function getLoginStatus(sessionId: string): LoginStatus {
+  return getState(sessionId).status;
 }
 
-export function getZaloApi(): API | null {
-  return getState().api;
+export function getZaloApi(sessionId: string): API | null {
+  return getState(sessionId).api;
 }
 
-export function isLoggedIn(): boolean {
-  return getState().status === "logged_in";
+export function isLoggedIn(sessionId: string): boolean {
+  return getState(sessionId).status === "logged_in";
 }
 
-export function getQRImageBase64(): string | null {
-  return getState().qrImageBase64;
+export function getQRImageBase64(sessionId: string): string | null {
+  return getState(sessionId).qrImageBase64;
 }
 
-export function getSessionForClient(): { imei: string; userAgent: string; cookies: unknown[] } | null {
-  const state = getState();
+export function getSessionForClient(sessionId: string): { imei: string; userAgent: string; cookies: unknown[] } | null {
+  const state = getState(sessionId);
   if (state.status !== "logged_in" || !state.api) return null;
   try {
     const ctx = state.api.getContext();
@@ -85,9 +91,10 @@ export function getSessionForClient(): { imei: string; userAgent: string; cookie
 }
 
 export async function restoreFromSession(
-  data: { imei: string; userAgent: string; cookies: unknown[] }
+  data: { imei: string; userAgent: string; cookies: unknown[] },
+  sessionId: string
 ): Promise<boolean> {
-  const state = getState();
+  const state = getState(sessionId);
   if (state.status === "logged_in") return true;
   try {
     const { imei, userAgent, cookies } = data;
@@ -99,8 +106,8 @@ export async function restoreFromSession(
     state.status = "logged_in";
     state.error = null;
     api.listener.start();
-    wireMessageListener(api);
-    console.log("[zalo] Restored session from client.");
+    wireMessageListener(api, sessionId);
+    console.log("[zalo] Restored session from client.", sessionId);
     return true;
   } catch (err) {
     console.error("[zalo] Session restore failed:", err);
@@ -108,8 +115,8 @@ export async function restoreFromSession(
   }
 }
 
-export async function startQRLogin(): Promise<void> {
-  const state = getState();
+export async function startQRLogin(sessionId: string): Promise<void> {
+  const state = getState(sessionId);
 
   if (state.status === "logged_in") return;
   if (state.status === "qr_generated") return;
@@ -135,7 +142,7 @@ export async function startQRLogin(): Promise<void> {
       state.status = "logged_in";
       state.qrImageBase64 = null;
       api.listener.start();
-      wireMessageListener(api);
+      wireMessageListener(api, sessionId);
     })
     .catch((err: Error) => {
       state.status = "error";
@@ -143,15 +150,13 @@ export async function startQRLogin(): Promise<void> {
     });
 }
 
-// ai-start
-export async function regenerateQRLogin(): Promise<void> {
-  resetLogin();
-  await startQRLogin();
+export async function regenerateQRLogin(sessionId: string): Promise<void> {
+  resetLogin(sessionId);
+  await startQRLogin(sessionId);
 }
 
-export function resetLogin(): void {
-// ai-end
-  const state = getState();
+export function resetLogin(sessionId: string): void {
+  const state = getState(sessionId);
   if (state.api) {
     try {
       state.api.listener.stop();
@@ -165,7 +170,7 @@ export function resetLogin(): void {
   state.qrImageBase64 = null;
 }
 
-export function wireMessageListener(api: API): void {
+export function wireMessageListener(api: API, sessionId: string): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   api.listener.on("message", async (message: any) => {
     try {
@@ -218,11 +223,11 @@ export function wireMessageListener(api: API): void {
         ...(mediaUrl && { mediaUrl }),
       };
 
-      storeMessage(chatMsg);
+      storeMessage(chatMsg, sessionId);
 
       const io = getSocketServer();
       if (io) {
-        io.emit("message", chatMsg);
+        io.to(sessionId).emit("message", chatMsg);
       }
     } catch (err) {
       console.error("[zalo] message wiring error:", err);
@@ -250,13 +255,13 @@ export function wireMessageListener(api: API): void {
         ts: Date.now(),
       };
 
-      const store = getEventStore();
+      const store = getEventStore(sessionId);
       store.unshift(log);
       if (store.length > MAX_GROUP_EVENTS) store.length = MAX_GROUP_EVENTS;
 
       const io = getSocketServer();
       if (io) {
-        io.emit("group_event", log);
+        io.to(sessionId).emit("group_event", log);
       }
     } catch (err) {
       console.error("[zalo] group_event wiring error:", err);
@@ -275,11 +280,11 @@ export function wireMessageListener(api: API): void {
 
       if (!threadId || !msgId || !icon) return;
 
-      updateMessageReaction(threadId, msgId, icon, senderId, senderName);
+      updateMessageReaction(threadId, msgId, icon, senderId, senderName, sessionId);
 
       const io = getSocketServer();
       if (io) {
-        io.emit("message_reaction", { threadId, msgId, icon, senderId, senderName });
+        io.to(sessionId).emit("message_reaction", { threadId, msgId, icon, senderId, senderName });
       }
     } catch (err) {
       console.error("[zalo] reaction wiring error:", err);
