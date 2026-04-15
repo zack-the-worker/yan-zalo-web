@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getZaloApi, isLoggedIn } from "@/lib/zalo";
 
-export async function GET() {
-  if (!isLoggedIn()) {
+export async function GET(req: NextRequest) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
   }
-  const api = getZaloApi()!;
+  const api = getZaloApi(sid)!;
   try {
     const result = await api.getQuickMessageList();
     return NextResponse.json({ items: result.items });
@@ -16,10 +17,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isLoggedIn()) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
   }
-  const api = getZaloApi()!;
+  const api = getZaloApi(sid)!;
   let body: { keyword?: string; title?: string };
   try {
     body = await req.json();

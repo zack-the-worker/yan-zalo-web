@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { GET, POST } from "./route";
 
@@ -13,7 +14,8 @@ describe("GET /api/chat/quick-messages", () => {
 
   it("returns 401 when not logged in", async () => {
     vi.mocked(isLoggedIn).mockReturnValue(false);
-    const res = await GET();
+    const req = new NextRequest("http://localhost/api/chat/quick-messages", { headers: { "Cookie": "zalo_sid=test-sid" } });
+    const res = await GET(req);
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBeDefined();
@@ -29,7 +31,8 @@ describe("GET /api/chat/quick-messages", () => {
       }),
     };
     vi.mocked(getZaloApi).mockReturnValue(mockApi as never);
-    const res = await GET();
+    const req = new NextRequest("http://localhost/api/chat/quick-messages", { headers: { "Cookie": "zalo_sid=test-sid" } });
+    const res = await GET(req);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.items).toHaveLength(1);
@@ -40,10 +43,10 @@ describe("GET /api/chat/quick-messages", () => {
 describe("POST /api/chat/quick-messages", () => {
   it("returns 401 when not logged in", async () => {
     vi.mocked(isLoggedIn).mockReturnValue(false);
-    const req = new Request("http://localhost/api/chat/quick-messages", {
+    const req = new NextRequest("http://localhost/api/chat/quick-messages", {
       method: "POST",
       body: JSON.stringify({ keyword: "hi", title: "Xin chào!" }),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cookie": "zalo_sid=test-sid" },
     });
     const res = await POST(req as never);
     expect(res.status).toBe(401);
@@ -52,10 +55,10 @@ describe("POST /api/chat/quick-messages", () => {
   it("returns 400 when keyword or title missing", async () => {
     vi.mocked(isLoggedIn).mockReturnValue(true);
     vi.mocked(getZaloApi).mockReturnValue({ addQuickMessage: vi.fn() } as never);
-    const req = new Request("http://localhost/api/chat/quick-messages", {
+    const req = new NextRequest("http://localhost/api/chat/quick-messages", {
       method: "POST",
       body: JSON.stringify({ keyword: "" }),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cookie": "zalo_sid=test-sid" },
     });
     const res = await POST(req as never);
     expect(res.status).toBe(400);
@@ -71,10 +74,10 @@ describe("POST /api/chat/quick-messages", () => {
       }),
     };
     vi.mocked(getZaloApi).mockReturnValue(mockApi as never);
-    const req = new Request("http://localhost/api/chat/quick-messages", {
+    const req = new NextRequest("http://localhost/api/chat/quick-messages", {
       method: "POST",
       body: JSON.stringify({ keyword: "hi", title: "Xin chào!" }),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cookie": "zalo_sid=test-sid" },
     });
     const res = await POST(req as never);
     expect(res.status).toBe(200);
@@ -88,10 +91,10 @@ describe("POST /api/chat/quick-messages", () => {
     const err = Object.assign(new Error("Item size not support"), { code: 821 });
     const mockApi = { addQuickMessage: vi.fn().mockRejectedValue(err) };
     vi.mocked(getZaloApi).mockReturnValue(mockApi as never);
-    const req = new Request("http://localhost/api/chat/quick-messages", {
+    const req = new NextRequest("http://localhost/api/chat/quick-messages", {
       method: "POST",
       body: JSON.stringify({ keyword: "tambiet", title: "tạm biệt" }),
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Cookie": "zalo_sid=test-sid" },
     });
     const res = await POST(req as never);
     expect(res.status).toBe(500);

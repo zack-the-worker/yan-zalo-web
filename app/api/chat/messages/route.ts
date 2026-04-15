@@ -5,7 +5,8 @@ import { getMessages } from "@/lib/messageStore";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  if (!isLoggedIn()) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
 
@@ -16,6 +17,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing threadId" }, { status: 400 });
   }
 
-  const messages = getMessages(threadId);
+  const messages = getMessages(threadId, sid);
   return NextResponse.json({ messages });
 }

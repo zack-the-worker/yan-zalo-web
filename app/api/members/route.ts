@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getZaloApi, isLoggedIn } from "@/lib/zalo";
 
 export async function POST(req: NextRequest) {
-  if (!isLoggedIn()) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
 
-  const api = getZaloApi();
+  const api = getZaloApi(sid);
   if (!api) {
     return NextResponse.json({ error: "API not ready" }, { status: 503 });
   }

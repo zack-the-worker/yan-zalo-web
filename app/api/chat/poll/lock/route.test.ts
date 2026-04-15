@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "./route";
 
@@ -9,10 +10,10 @@ vi.mock("@/lib/zalo", () => ({
 import { isLoggedIn, getZaloApi } from "@/lib/zalo";
 
 function makeRequest(body: Record<string, unknown>) {
-  return new Request("http://localhost/api/chat/poll/lock", {
+  return new NextRequest("http://localhost/api/chat/poll/lock", {
     method: "POST",
     body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "Cookie": "zalo_sid=test-sid" },
   });
 }
 

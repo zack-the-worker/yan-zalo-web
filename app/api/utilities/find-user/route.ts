@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getZaloApi, isLoggedIn } from "@/lib/zalo";
 
 export async function GET(req: NextRequest) {
-  if (!isLoggedIn()) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
   }
 
@@ -11,7 +12,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Thiếu tham số phone" }, { status: 400 });
   }
 
-  const api = getZaloApi()!;
+  const api = getZaloApi(sid)!;
   try {
     const user = await api.findUser(phone);
     return NextResponse.json(user);

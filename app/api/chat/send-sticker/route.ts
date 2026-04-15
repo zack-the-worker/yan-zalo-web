@@ -3,7 +3,8 @@ import { getZaloApi, isLoggedIn } from "@/lib/zalo";
 import { ThreadType } from "zca-js";
 
 export async function POST(req: NextRequest) {
-  if (!isLoggedIn()) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
 
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  const api = getZaloApi()!;
+  const api = getZaloApi(sid)!;
   try {
     const result = await api.sendSticker(
       { id, cateId, type },

@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@/lib/zalo", () => ({
@@ -11,7 +12,7 @@ import * as zaloMock from "@/lib/zalo";
 function makeRequest(params: Record<string, string> = {}) {
   const url = new URL("http://localhost/api/utilities/related-friend-group");
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  return { nextUrl: url } as unknown as import("next/server").NextRequest;
+  return new NextRequest(url.toString(), { headers: { "Cookie": "zalo_sid=test-sid" } });
 }
 
 beforeEach(() => {

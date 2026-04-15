@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getZaloApi, isLoggedIn } from "@/lib/zalo";
 import { getConversations, upsertConversation } from "@/lib/messageStore";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  if (!isLoggedIn()) {
+export async function GET(req: NextRequest) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
 
-  const api = getZaloApi();
+  const api = getZaloApi(sid);
   if (!api) {
     return NextResponse.json({ error: "API not ready" }, { status: 503 });
   }
@@ -39,7 +40,7 @@ export async function GET() {
         type: "User",
         name: f.displayName,
         avatar: f.avatar,
-      });
+      }, sid);
     }
   } catch (err) {
     console.error("[chat/conversations] getAllFriends error:", err);
@@ -60,13 +61,13 @@ export async function GET() {
           name: (info as any).name ?? groupId,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           avatar: (info as any).avatar ?? (info as any).avt ?? "",
-        });
+        }, sid);
       }
     }
   } catch (err) {
     console.error("[chat/conversations] getAllGroups error:", err);
   }
 
-  const conversations = getConversations();
+  const conversations = getConversations(sid);
   return NextResponse.json({ conversations, friends });
 }

@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "./route";
 
@@ -37,7 +38,10 @@ function makeReq(fields: { file?: unknown; threadId?: string; threadType?: strin
       return null;
     }),
   };
-  return { formData: vi.fn().mockResolvedValue(mockFormData) } as never;
+  return {
+    cookies: { get: (k: string) => k === "zalo_sid" ? { value: "test-sid" } : undefined },
+    formData: vi.fn().mockResolvedValue(mockFormData),
+  } as never;
 }
 
 describe("POST /api/chat/attachment", () => {

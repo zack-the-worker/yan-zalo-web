@@ -1,3 +1,4 @@
+import { NextRequest } from "next/server";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock @/lib/zalo before importing the route handler
@@ -15,9 +16,13 @@ beforeEach(() => {
   vi.mocked(zaloMock.isLoggedIn).mockReturnValue(false);
 });
 
+function makeReq() {
+  return new NextRequest("http://localhost/api/utilities/group-events", { headers: { "Cookie": "zalo_sid=test-sid" } });
+}
+
 describe("GET /api/utilities/group-events", () => {
   it("returns 401 when not logged in", async () => {
-    const res = await GET();
+    const res = await GET(makeReq());
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body).toHaveProperty("error");
@@ -36,7 +41,7 @@ describe("GET /api/utilities/group-events", () => {
         ts: 1000,
       },
     ]);
-    const res = await GET();
+    const res = await GET(makeReq());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.events).toHaveLength(1);
@@ -45,7 +50,7 @@ describe("GET /api/utilities/group-events", () => {
 
 describe("DELETE /api/utilities/group-events", () => {
   it("returns 401 when not logged in", async () => {
-    const res = await DELETE();
+    const res = await DELETE(makeReq());
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body).toHaveProperty("error");
@@ -53,7 +58,7 @@ describe("DELETE /api/utilities/group-events", () => {
 
   it("clears events and returns ok:true when logged in", async () => {
     vi.mocked(zaloMock.isLoggedIn).mockReturnValue(true);
-    const res = await DELETE();
+    const res = await DELETE(makeReq());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true });

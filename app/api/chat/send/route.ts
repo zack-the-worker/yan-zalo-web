@@ -5,11 +5,12 @@ import { storeMessage, type ChatMessage } from "@/lib/messageStore";
 import { getSocketServer } from "@/lib/socketServer";
 
 export async function POST(req: NextRequest) {
-  if (!isLoggedIn()) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Not logged in" }, { status: 401 });
   }
 
-  const api = getZaloApi();
+  const api = getZaloApi(sid);
   if (!api) {
     return NextResponse.json({ error: "API not ready" }, { status: 503 });
   }
@@ -48,11 +49,11 @@ export async function POST(req: NextRequest) {
       isSelf: true,
     };
 
-    storeMessage(sentMsg);
+    storeMessage(sentMsg, sid);
 
     const io = getSocketServer();
     if (io) {
-      io.emit("message", sentMsg);
+      io.to(sid).emit("message", sentMsg);
     }
 
     return NextResponse.json({ ok: true, message: sentMsg });

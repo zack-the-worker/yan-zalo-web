@@ -72,8 +72,8 @@ export default function LastOnlinePage() {
         🕐 Tra cứu giờ online
       </h1>
       <p className="text-sm text-gray-500 mb-6">
-        Xem lần cuối người dùng online trên Zalo — kể cả người lạ và người ẩn
-        trạng thái.
+        Xem lần cuối người dùng online trên Zalo. Nếu người dùng đã bật ẩn
+        trạng thái, thời gian sẽ không hiển thị được.
       </p>
 
       {/* Search form */}
@@ -135,32 +135,36 @@ export default function LastOnlinePage() {
           {/* Last online */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-500">Hoạt động cuối</span>
-              <span className="text-sm font-semibold text-gray-800">
-                {lastOnline.lastOnline
-                  ? formatLastOnline(lastOnline.lastOnline)
-                  : "Không có dữ liệu"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
               <span className="text-sm text-gray-500">Ẩn trạng thái</span>
               <span
                 className={`text-xs font-medium px-2 py-1 rounded-full ${
                   lastOnline.settings?.show_online_status
                     ? "bg-green-100 text-green-600"
-                    : "bg-gray-100 text-gray-500"
+                    : "bg-orange-100 text-orange-600"
                 }`}
               >
-                {lastOnline.settings?.show_online_status ? "Hiển thị" : "Ẩn"}
+                {lastOnline.settings?.show_online_status ? "Hiển thị" : "Đã ẩn"}
               </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">Hoạt động cuối</span>
+              {lastOnline.lastOnline ? (
+                <span className="text-sm font-semibold text-gray-800">
+                  {formatLastOnline(lastOnline.lastOnline)}
+                </span>
+              ) : (
+                <span className="text-sm text-orange-500 font-medium">
+                  {lastOnline.settings?.show_online_status === false
+                    ? "Bị ẩn bởi người dùng"
+                    : "Không có dữ liệu"}
+                </span>
+              )}
             </div>
             {lastOnline.lastOnline > 0 && (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-500">Thời gian chính xác</span>
                 <span className="text-xs text-gray-400">
-                  {new Date(lastOnline.lastOnline * 1000).toLocaleString(
-                    "vi-VN"
-                  )}
+                  {new Date(lastOnline.lastOnline * 1000).toLocaleString("vi-VN")}
                 </span>
               </div>
             )}

@@ -3,7 +3,8 @@ import { getZaloApi, isLoggedIn } from "@/lib/zalo";
 import type { RelatedGroupsEnriched } from "@/types/utilities";
 
 export async function GET(req: NextRequest) {
-  if (!isLoggedIn()) {
+  const sid = req.cookies.get("zalo_sid")?.value ?? "";
+  if (!sid || !isLoggedIn(sid)) {
     return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
   }
 
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Thiếu tham số uid" }, { status: 400 });
   }
 
-  const api = getZaloApi()!;
+  const api = getZaloApi(sid)!;
   try {
     const relatedRes = await api.getRelatedFriendGroup(uid);
     const groupIds: string[] = relatedRes.groupRelateds[uid] ?? [];
